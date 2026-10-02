@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='54' font-size='56'%3E🧾%3C/text%3E%3C/svg%3E">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f0c419">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS: agregar a pantalla de inicio -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Presupuestos">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <title>🧾 Presupuestos · Pampero</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <!-- Generación de PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f2f1ee;
+      --surface: #ffffff;
+      --surface2: #f5f4f1;
+      --border: #e2dfd9;
+      --accent: #1f2937;
+      --accent2: #f0c419;
+      --accent2-ink: #1a1a1a;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --purple: #4b5563;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --mono: 'DM Mono', monospace;
+      --display: 'Syne', sans-serif;
+      --body: 'DM Sans', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--body); min-height: 100vh; }
+
+    header { background: #fff; border-bottom: 1px solid var(--border); padding: .8rem 1.5rem; display: flex; align-items: center; gap: 1rem; position: sticky; top: 0; z-index: 100; }
+    .header-left h1 { font-family: var(--display); font-size: 1rem; font-weight: 800; }
+    .header-left span { font-size: .72rem; color: var(--muted); font-family: var(--mono); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: .6rem; }
+
+    main { flex: 1; padding: 1.5rem; max-width: 900px; width: 100%; margin: 0 auto; }
+
+    .panel { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 1.25rem; overflow: hidden; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: .9rem 1.25rem; border-bottom: 1px solid var(--border); gap: .75rem; flex-wrap: wrap; }
+    .panel-title { font-family: var(--display); font-size: .9rem; font-weight: 700; }
+    .panel-body { padding: 1.1rem 1.25rem; }
+
+    label { display: block; font-size: .68rem; font-family: var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: .4rem; }
+    input[type="text"], input[type="date"], input[type="number"] { width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: .6rem .9rem; font-family: var(--mono); font-size: .88rem; color: var(--text); transition: border-color .15s; outline: none; }
+    input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(240,196,25,.25); }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .form-field-full { grid-column: 1 / -1; }
+
+    /* ── Selector de lista de precios ── */
+    .lista-selector { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .lista-btn { flex: 1; min-width: 140px; background: #fff; border: 1.5px solid var(--border); border-radius: 10px; padding: .7rem .9rem; font-family: var(--display); font-weight: 700; font-size: .82rem; color: var(--muted); cursor: pointer; transition: all .12s; text-align: center; }
+    .lista-btn:hover { border-color: var(--accent2); color: var(--text); }
+    .lista-btn.active { background: var(--accent2); border-color: var(--accent2); color: var(--accent2-ink); }
+    .lista-btn.active.l2 { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .lista-btn.active.l3 { background: var(--purple); border-color: var(--purple); color: #fff; }
+
+    /* ── Buscador de artículos ── */
+    .pq-search-wrap { position: relative; }
+    .pq-dropdown { display: none; position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; max-height: 320px; overflow-y: auto; z-index: 9999; box-shadow: 0 6px 24px rgba(0,0,0,.18); -webkit-overflow-scrolling: touch; }
+    .pq-dd-item { padding: .55rem .9rem; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .pq-dd-item:last-child { border-bottom: none; }
+    .pq-dd-item:hover { background: var(--surface2); }
+    .pq-dd-code { font-family: var(--mono); font-weight: 700; color: var(--text); font-size: .85rem; white-space: nowrap; }
+    .pq-dd-desc { color: var(--muted); font-size: .8rem; flex: 1; min-width: 120px; }
+    .pq-dd-empty { padding: .8rem .9rem; color: var(--muted); font-size: .82rem; }
+    .pq-dd-noprice { font-size: .72rem; color: var(--danger); font-family: var(--mono); white-space: nowrap; }
+
+    .precio-tag-sm { font-family: var(--display); font-weight: 800; color: var(--success); background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 6px; padding: 1px 8px; font-size: .82rem; white-space: nowrap; }
+
+    /* ── Tabla de items ── */
+    .mono-val { font-family: var(--mono); font-size: .88rem; font-weight: 600; }
+    .pq-table { width: 100%; border-collapse: collapse; }
+    .pq-table th { text-align: left; font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: .6rem .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .pq-table td { padding: .55rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .pq-table tr:last-child td { border-bottom: none; }
+    .pq-item-desc { font-size: .78rem; color: var(--muted); margin-top: 1px; }
+    .pq-num-input { width: 100%; min-width: 70px; padding: .4rem .5rem; font-size: .85rem; text-align: right; }
+    .pq-num-input.pq-manual { border-color: #ca9f0a; background: #fffbeb; }
+    .pq-num-input.pq-sin-precio { border-color: var(--danger); }
+    .pq-price-cell { display: flex; align-items: center; gap: .3rem; }
+    .pq-reset-btn { background: none; border: none; cursor: pointer; color: #ca9f0a; font-size: .95rem; padding: .2rem; flex-shrink: 0; }
+    .pq-total-cell { font-family: var(--mono); font-weight: 700; text-align: right; white-space: nowrap; }
+    .pq-remove-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: .9rem; padding: .3rem; }
+    .pq-remove-btn:hover { color: var(--danger); }
+    .pq-empty { padding: 2.5rem 1.5rem; text-align: center; color: var(--muted); font-size: .88rem; }
+
+    /* ── Totales ── */
+    .pq-totales { padding: 1rem 1.25rem; border-top: 1px solid var(--border); }
+    .pq-tot-row { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); padding: .25rem 0; }
+    .pq-tot-row.pq-tot-final { border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .6rem; font-family: var(--display); font-weight: 800; font-size: 1.15rem; color: var(--text); }
+
+    /* ── Botones ── */
+    .btn { background: var(--accent2); color: var(--accent2-ink); border: none; border-radius: 10px; padding: .8rem 1.5rem; font-family: var(--display); font-size: .9rem; font-weight: 700; cursor: pointer; transition: background .15s; }
+    .btn:hover { background: #d9ad0f; }
+    .btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+    .btn-outline { background: #fff; color: var(--text); border: 1.5px solid var(--border); border-radius: 10px; padding: .8rem 1.5rem; font-family: var(--display); font-size: .9rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+    .btn-outline:hover { border-color: var(--danger); color: var(--danger); }
+    .pq-actions { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .5rem; }
+    .pq-actions .btn { flex: 2; min-width: 200px; }
+    .pq-actions .btn-outline { flex: 1; min-width: 140px; }
+
+    .pq-hint { font-size: .74rem; color: var(--muted); margin-top: .5rem; line-height: 1.5; }
+
+    .pq-perso-add { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
+    .btn-outline.btn-sm { padding: .58rem 1rem; font-size: .8rem; white-space: nowrap; }
+    .pq-perso-badge { display: block; width: fit-content; font-family: var(--mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; color: var(--purple); background: #f3e8ff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 1px 6px; margin-bottom: 4px; }
+    .pq-perso-input { width: 100%; font-family: var(--body); font-size: .85rem; }
+
+    @media (max-width: 640px) {
+      header { padding: .6rem 1rem; }
+      main { padding: .75rem; }
+      .form-grid { grid-template-columns: 1fr; }
+      .lista-btn { min-width: 100%; }
+      .pq-table th:nth-child(1), .pq-table td:nth-child(1) { min-width: 140px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>🧾 Presupuestos</h1>
+    <span>Pampero</span>
+  </div>
+  <div class="header-right">
+    <span id="pqLoadStatus" style="font-size:.68rem;color:var(--muted);font-family:var(--mono)">Cargando precios…</span>
+  </div>
+</header>
+
+<main>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Datos del presupuesto</span></div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div>
+          <label>Cliente (opcional)</label>
+          <input type="text" id="pqCliente" placeholder="Nombre del cliente">
+        </div>
+        <div>
+          <label>Vendedor (opcional)</label>
+          <input type="text" id="pqVendedor" placeholder="Nombre del vendedor">
+        </div>
+        <div>
+          <label>Fecha</label>
+          <input type="date" id="pqFecha">
+        </div>
+      </div>
+      <label>Lista de precios</label>
+      <div class="lista-selector" id="listaSelector"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Agregar artículo</span></div>
+    <div class="panel-body">
+      <div class="pq-search-wrap">
+        <input type="text" id="pqSearchInput" placeholder="Buscar artículo por código o descripción…"
+          oninput="pqSearch=this.value;renderDropdown()"
+          onfocus="renderDropdown()"
+          onblur="setTimeout(()=>{const d=document.getElementById('pqDropdown');if(d)d.style.display='none'},180)"
+          autocomplete="off">
+        <div id="pqDropdown" class="pq-dropdown"></div>
+      </div>
+      <div class="pq-hint">El precio se completa automáticamente según la lista elegida arriba. Podés editarlo en la tabla para casos de excepción.</div>
+
+      <div class="pq-perso-add">
+        <label>Personalización (ej: bordado, estampado)</label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <input type="text" id="pqPersoInput" placeholder="Describí la personalización…" style="flex:1;min-width:180px"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addPersonalizacion();}">
+          <button type="button" class="btn-outline btn-sm" onclick="addPersonalizacion()">+ Agregar personalización</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Ítems del presupuesto</span></div>
+    <div id="itemsEmpty" class="pq-empty">Todavía no agregaste artículos. Usá el buscador de arriba.</div>
+    <div id="itemsTableWrap" style="display:none;overflow-x:auto">
+      <table class="pq-table">
+        <thead>
+          <tr>
+            <th>Artículo</th>
+            <th style="width:90px">Cantidad</th>
+            <th style="width:140px">Precio Unit.</th>
+            <th style="width:110px;text-align:right">Total</th>
+            <th style="width:36px"></th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+    </div>
+    <div class="pq-totales">
+      <div class="pq-tot-row"><span>Total sin IVA</span><span id="totSubtotal">$0</span></div>
+      <div class="pq-tot-row"><span>IVA (21%)</span><span id="totIva">$0</span></div>
+      <div class="pq-tot-row pq-tot-final"><span>TOTAL</span><span id="totTotal">$0</span></div>
+    </div>
+  </div>
+
+  <div class="pq-actions">
+    <button class="btn" id="btnCompartir" onclick="compartirWhatsApp()">📤 Compartir por WhatsApp</button>
+    <button class="btn-outline" id="btnDescargar" onclick="descargarPDF()">⬇️ Descargar PDF</button>
+    <button class="btn-outline" onclick="nuevoPresupuesto()">Nuevo presupuesto</button>
+  </div>
+
+</main>
+
+<script>
+  // ═══════════════════════════════════════════════════════════
+  // CONSTANTS — mismas hojas de precios que Stock Real.html
+  // ═══════════════════════════════════════════════════════════
+  const PRICE_SHEETS_ID = '1fg6sQFMJBnZFgxEu2oFZJnyVgyV9X-gXMj1Bq_g6Fyw';
+  const PRICE_SHEETS_GID = '0';
+
+  // Lista 2 (Mayorista)
+  const PRICE2_SHEETS_ID = '16WIuzrqFclQO22YZbPhBY8nNfwpX8Q3wzshX-mTtNNU';
+  const PRICE2_SHEETS_GID = '0';
+  // Lista 3 (Distribuidora)
+  const PRICE3_SHEETS_ID = '1czDxMU8l3Rwht5hQ-MYj-iQ8gJ37AAbEEnQ8zo4uG6s';
+  const PRICE3_SHEETS_GID = '0';
+
+  const CATALOG = { "I116": { "desc": "PANTALON CAZADOR CARGO II H. PAMPERO CHICO (36-54)", "proveedores": ["MACATA SA"] }, "111122053": { "desc": "REMERA BASICA JERSEY 24/1 PEINADO LINCOLN", "proveedores": ["Pampenorte S.R.L."] }, "U752": { "desc": "CHALECO SOFTSHELL PAMPERO IND.", "proveedores": ["RANQUEL DEL PLATA SA"] }, "111138100": { "desc": "CHOMBA BASICA PIQUE PAMPERO", "proveedores": ["Pampenorte S.R.L."] }, "111140100": { "desc": "REMERA BASICA JERSEY 24/1 PAMPERO", "proveedores": ["Pampenorte S.R.L."] }, "121134003": { "desc": "BOTINETA PEHUAJO C/ CORDONES", "proveedores": ["RANQUEL DEL PLATA SA"] }, "134171010": { "desc": "GUANTE CUTEX TOUCH ANTI CORTE PU", "proveedores": ["INDUSTRIAL ZONDA SA"] }, "321173003": { "desc": "BOTIN TREKKING CASTOR", "proveedores": ["INTENSIVO SA"] }, "411124020": { "desc": "CAMISA SAN LUIS C.SEMI AB.BOT M/L", "proveedores": ["AZUL PATAGONIA"] }, "411138029": { "desc": "POLO RIO DE LA PLATA", "proveedores": ["C D Way S.A."] }, "811122047": { "desc": "REMERA BASICA M/C ESC RED.", "proveedores": ["C D Way S.A."] }, "I011": { "desc": "TRAJE DE LLUVIA PVC PAMPERO", "proveedores": ["SAFETY SOLUTION SA"] }, "I036": { "desc": "PANTALON DE TRABAJO HOMBRE PAMPERO CH(36-60)", "proveedores": ["MACATA SA"] }, "I075": { "desc": "GUANTE DESCARNE SOLDADOR", "proveedores": ["CANOR - NOGUERA CARLOS JAVIER"] }, "I102": { "desc": "BOMBACHA LISA HOMBRE PAMPERO (38-54)", "proveedores": ["MACATA SA"] }, "I257": { "desc": "PONCHO RESERO ROYAL PAMPERO PVC", "proveedores": ["SAFETY SOLUTION SA"] }, "IC012": { "desc": "CAMISA DE TRABAJO H. M/L PAMPERO CH (36-48)", "proveedores": ["MACATA SA"] }, "IC015": { "desc": "CAMISA DE TRAB H.M/L PAMPERO AZUL CH(38-48)", "proveedores": ["MACATA SA"] }, "U013": { "desc": "ALPARGATA INYECTADA SIMIL YUTE PAMPERO", "proveedores": ["MP NEGOCIOS ARGENTINA SA"] }, "U029": { "desc": "PANTALON CARGO BAGUALES PAMPERO", "proveedores": ["CITEX SRL"] }, "U082": { "desc": "CINTO SAUCE COMB. 40 SOGA PAMPERO", "proveedores": ["Pionera S.A."] }, "U12106004": { "desc": "PANTALON CAIRO PAMPERO", "proveedores": ["MACATA SA"] }, "U178": { "desc": "PANTALON JUNIN CHUPIN", "proveedores": ["RIEMERSO SA"] }, "U412": { "desc": "PANTALON CARGO DEL NORTE H.", "proveedores": ["CITEX SRL"] }, "123410131": { "desc": "BOTIN PATRIO C/FLOR C/P PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "13106003": { "desc": "ROMPEVIENTO PAMPERO", "proveedores": ["La Pettit S.A."] }, "136121501": { "desc": "TRAJE DE LLUVIA STORM PAMPERO", "proveedores": ["SAFETY SOLUTION SA"] }, "224122000": { "desc": "PANCHA RANCHO", "proveedores": ["CITEX SRL"] }, "241122007": { "desc": "BOINA VASCA ALGODON 35CM", "proveedores": ["Corbellini Pablo Andres"] }, "244122009": { "desc": "FAJA GUARDA PAMPA 9CM PAMPERO", "proveedores": ["Corbellini Pablo Andres"] }, "245122001": { "desc": "RUANA PESADA C/GUARDA", "proveedores": ["Corbellini Pablo Andres"] }, "3001": { "desc": "CHAPA Nº0 16X21", "proveedores": ["Recalde Gaston Alberto"] }, "311106107": { "desc": "CAMISA PUAN M/CORTA 2 BOLSILLOS", "proveedores": ["Armesto Maria Eugenia"] }, "311106108": { "desc": "CAMISA PUAN PAPPER M/L", "proveedores": ["Armesto Maria Eugenia"] }, "312106024": { "desc": "PANTALON EPEUCEN SOFTSHELL SOLAR PRO H.", "proveedores": ["Armesto Maria Eugenia"] }, "312157000": { "desc": "PANTALON HUEMUL", "proveedores": ["Lopez Omar Alexis"] }, "313106019": { "desc": "CHALECO DORADO SOFSHELL", "proveedores": ["Lopez Omar Alexis"] }, "313106202": { "desc": "CAMPERA PACU", "proveedores": ["Lopez Omar Alexis"] }, "313211142": { "desc": "CAMPERA CURRUHUE H. SOFTSELL", "proveedores": ["Armesto Maria Eugenia"] }, "342106000": { "desc": "CUELLO MULTIFUNCION", "proveedores": ["Lopez Omar Alexis"] }, "411103006": { "desc": "CAMISA OXFORD HOMBRE BARRACAS", "proveedores": ["CITEX SRL"] }, "411106108": { "desc": "CAMISA ACTIVIDAD", "proveedores": ["BREA MARIA PAULA"] }, "411122019": { "desc": "CAMISA CEFERINO POPLIN C. ITAL", "proveedores": ["AZUL PATAGONIA"] }, "411122024": { "desc": "SWEATER SAN CARLOS", "proveedores": ["FOOTWEAR S.R.L"] }, "411122059": { "desc": "CAMPERA SAN CARLOS", "proveedores": ["FOOTWEAR S.R.L"] }, "411122214": { "desc": "SWEATER PINO", "proveedores": ["J.S. Purpura S.R.L."] }, "411122231": { "desc": "SWEATER MORRIS ESCOTE V", "proveedores": ["J.S. Purpura S.R.L."] }, "411122240": { "desc": "CHALECO LENGA", "proveedores": ["J.S. Purpura S.R.L."] }, "411122244": { "desc": "CAMISA MONTE", "proveedores": ["CITEX SRL"] }, "411124001": { "desc": "CAMISA SOLER C/INGLES ML C/B POPLIN", "proveedores": ["AZUL PATAGONIA"] }, "411138008": { "desc": "POLO BASICA PIQUE", "proveedores": ["C D Way S.A."] }, "411139007": { "desc": "CAMPERA CORMORANES", "proveedores": ["C D Way S.A."] }, "411140004": { "desc": "REMERA BASICA PREMIUM 30/1 PAMPERO", "proveedores": ["C D Way S.A."] }, "411140205": { "desc": "REMERA MOLINOS", "proveedores": ["C D Way S.A."] }, "411140216": { "desc": "REMERA COLOME", "proveedores": ["C D Way S.A."] }, "411140218": { "desc": "POLO VOLCAN DOMUYO", "proveedores": ["C D Way S.A."] }, "411514109": { "desc": "CAMISA FRENCH FANTASIA", "proveedores": ["CITEX SRL"] }, "411520002": { "desc": "CAMPERA ITAMBAE", "proveedores": ["J.S. Purpura S.R.L."] }, "411520003": { "desc": "SWEATER AYACUCHO", "proveedores": ["J.S. Purpura S.R.L."] }, "411527012": { "desc": "CAMISA SOLER CUELLO INGLES OXFORD RAYADO", "proveedores": ["AZUL PATAGONIA"] }, "411540007": { "desc": "SWEATER ROBLE", "proveedores": ["J.S. Purpura S.R.L."] }, "412101002": { "desc": "PANTALON CARGO DEL NORTE HOMBRE", "proveedores": ["CITEX SRL"] }, "412106029": { "desc": "PANTALON VIAJERO SECADO RAPIDO", "proveedores": ["BREA MARIA PAULA"] }, "412106032": { "desc": "PANTALON DESMONTABLE", "proveedores": ["BREA MARIA PAULA"] }, "412124001": { "desc": "BERMUDA ROMERILLO PINZADA POPLIN", "proveedores": ["RIEMERSO SA"] }, "412500058": { "desc": "PANTALON ORIGEN DENIM", "proveedores": ["RIEMERSO SA"] }, "412545002": { "desc": "PANTALON FELIPE DENIM", "proveedores": ["RIEMERSO SA"] }, "413101031": { "desc": "CAMPERA RUSTICA", "proveedores": ["Lopez Omar Alexis"] }, "444134005": { "desc": "CINTO HEBILLA FORRADA 35MM", "proveedores": ["Pionera S.A."] }, "444134011": { "desc": "CINTO ALAMO 40MM", "proveedores": ["Pionera S.A."] }, "511138100": { "desc": "CHOMBA DAMA BASICA PIQUE PAMPERO", "proveedores": ["Pampenorte S.R.L."] }, "712106008": { "desc": "BABUCHA ROSAS SOFT SHELL DAMA", "proveedores": ["Armesto Maria Eugenia"] }, "7798331470540": { "desc": "BOLSO DUOMO BAG 19 LTS GR", "proveedores": ["ARTICULOS PROMOCIONALES SA"] }, "7798385662892": { "desc": "MOCHILA TRAFUL", "proveedores": ["ARTICULOS PROMOCIONALES SA"] }, "7798385666784": { "desc": "BOTELLA HYDRA GO 750ML", "proveedores": ["ARTICULOS PROMOCIONALES SA"] }, "7799176003306": { "desc": "BOLSO REMANSO", "proveedores": ["ARTICULOS PROMOCIONALES SA"] }, "811122092": { "desc": "REMERA PETUNIA", "proveedores": ["C D Way S.A."] }, "811122112": { "desc": "CAMISA JAUREGUI POPLIN", "proveedores": ["TORRES RODRIGO SEBASTIAN"] }, "811122263": { "desc": "CAMISA RAUCH BRODERY", "proveedores": ["AZUL PATAGONIA"] }, "811122315": { "desc": "CAMISA LUZ", "proveedores": ["AZUL PATAGONIA"] }, "811124004": { "desc": "CAMISA MAIZANI M/L POPLIN Y FIBRANA", "proveedores": ["AZUL PATAGONIA"] }, "811124033": { "desc": "CAMISA CLARA POPLIN RAYAS", "proveedores": ["TORRES RODRIGO SEBASTIAN"] }, "811138001": { "desc": "POLO TREBOL BLANCO", "proveedores": ["C D Way S.A."] }, "811140064": { "desc": "REMERA ALGODONILLO", "proveedores": ["C D Way S.A."] }, "811140065": { "desc": "REMERA PUERTO PIRAMIDES", "proveedores": ["C D Way S.A."] }, "811168026": { "desc": "REMERA CATEDRAL", "proveedores": ["C D Way S.A."] }, "811500000": { "desc": "CAMISA MAIZANI DENIM M/L", "proveedores": ["TORRES RODRIGO SEBASTIAN"] }, "811505001": { "desc": "CAMISA BASICA MAIZANI POPLIN LISO", "proveedores": ["AZUL PATAGONIA"] }, "811508009": { "desc": "POLO TREBOL ROJO", "proveedores": ["C D Way S.A."] }, "811527004": { "desc": "CAMISA BASICA 70/30 MAIZANI OXFORD RAYADO", "proveedores": ["AZUL PATAGONIA"] }, "811533007": { "desc": "CAMISA BASICA MAIZANI POPLIN RAYADO", "proveedores": ["AZUL PATAGONIA"] }, "812122225": { "desc": "BOMBACHA MARTINA", "proveedores": ["RIEMERSO SA"] }, "812506036": { "desc": "PANTALON CUMBRES DENIM", "proveedores": ["RIEMERSO SA"] }, "842135004": { "desc": "PASCHMINA A CUADROS", "proveedores": ["J.S. Purpura S.R.L."] }, "844134010": { "desc": "CINTO 15MM", "proveedores": ["Pionera S.A."] }, "844134013": { "desc": "CINTO CANELO FLOTER 30MM", "proveedores": ["Pionera S.A."] }, "844134015": { "desc": "CINTO JAZMIN 30MM", "proveedores": ["Pionera S.A."] }, "882106012": { "desc": "MOCHILA PEHUEN CO", "proveedores": ["Pionera S.A."] }, "882106013": { "desc": "BOLSO PEHUEN CO", "proveedores": ["Pionera S.A."] }, "944122002": { "desc": "FAJA GUARDA PAMPA NIÑO", "proveedores": ["Corbellini Pablo Andres"] }, "A004": { "desc": "PANTALON BAHIA CLASICO 5 BOLS. H. PAMPERO", "proveedores": ["RIEMERSO SA"] }, "A200": { "desc": "PANTALON ARECO GABARDINA C/LYCRA", "proveedores": ["RIEMERSO SA"] }, "I004": { "desc": "CHALECO BASICO H. POLAR C/BOLS. PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I005": { "desc": "CAMPERA BASICA H.POLAR C/BOLS. PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I007": { "desc": "CHALECO BASICO TERMICO TRK PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I013": { "desc": "TRAJE DE LLUVIA BIL VEX", "proveedores": ["BAC-DALL ARGENTINA SA"] }, "I026": { "desc": "MAMELUCO MANGA RANGLAN H. PAMPERO AZUL (50-60)", "proveedores": ["MACATA SA"] }, "I042": { "desc": "CAMPERA ANORAK TERMICA TRUCKER PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I043": { "desc": "CAMPERA PARKA BIL VEX", "proveedores": ["BAC-DALL ARGENTINA SA"] }, "I044": { "desc": "CAMPERA DRIVER BIL VEX PREMIUM CORTA", "proveedores": ["BAC-DALL ARGENTINA SA"] }, "I051": { "desc": "BOTA PETROLERA CLASICA PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I060": { "desc": "BOTA PAMPERO JOB MASTER C.LARGA", "proveedores": ["INTENSIVO SA"] }, "I062": { "desc": "BOTA PAMPERO JOB MASTER CON PUNTERA", "proveedores": ["INTENSIVO SA"] }, "I065": { "desc": "BOTA NAUTICA C/CUELLO PVC C.LARGA PAMPERO", "proveedores": ["INTENSIVO SA"] }, "I115": { "desc": "PANTALON CAZADOR CARGO II H. PAMPERO GRANDE (56-70)", "proveedores": ["MACATA SA"] }, "I119": { "desc": "BERMUDA CARGO H. PAMPERO", "proveedores": ["MACATA SA"] }, "I125": { "desc": "CAMISA DENIM FAC TOWN", "proveedores": ["FAC TOWN"] }, "I207": { "desc": "BOTIN PA-709 C/BOX PU BIDENSIDAD", "proveedores": ["DENEB SA"] }, "I213": { "desc": "BOTIN 1709 C/FLOR PU BIDENSIDAD", "proveedores": ["DENEB SA"] }, "I272": { "desc": "BOTIN FUNDIDOR ELAS. 2519 S/PUNTA", "proveedores": ["DENEB SA"] }, "I307": { "desc": "ZAPATILLA P1269 C/PUNTA", "proveedores": ["DENEB SA"] }, "I312": { "desc": "ZAPATO 1609 C/FLOR C/PUNTA", "proveedores": ["DENEB SA"] }, "I322": { "desc": "BOTIN ALENKE (2799) PAMPERO C/P", "proveedores": ["DENEB SA"] }, "I326": { "desc": "CAMPERA DESCARNE SOLDADOR (S-3XL)", "proveedores": ["CANOR - NOGUERA CARLOS JAVIER"] }, "I345": { "desc": "BOTA JOB MASTER PVC PAMPERO BLANCA", "proveedores": ["INTENSIVO SA"] }, "I350": { "desc": "BOMBACHA LISA HOMBRE PAMPERO (56-60)", "proveedores": ["MACATA SA"] }, "I352": { "desc": "BOMBACHA LISA H.PAMPERO AZUL (56-60)", "proveedores": ["MACATA SA"] }, "I368": { "desc": "BALIZA INTERMITENTE P/CONO GRANDE", "proveedores": ["SIN MARCA"] }, "I380": { "desc": "ZAP. P35 C/FLOR S/PUNTA", "proveedores": ["TKW S.A."] }, "I401": { "desc": "TRAJE PREMIUM MOTO STYLE PAMPERO", "proveedores": ["SAFETY SOLUTION SA"] }, "I461": { "desc": "BOTIN 1709 BLANCO C/FLOR C/PUNTA", "proveedores": ["DENEB SA"] }, "I462": { "desc": "BOTIN BIDENSIDAD C/P P 901 DN PAMPERO", "proveedores": ["TKW S.A."] }, "I479": { "desc": "PANTALON JEAN INDUS. WORKER", "proveedores": ["MACATA SA"] }, "I545": { "desc": "BOTIN PAMPERO MARRON C/P P41FM", "proveedores": ["TKW S.A."] }, "I546": { "desc": "BOTIN PAMPERO MARRON SIN PUNTERA P40FM", "proveedores": ["TKW S.A."] }, "I548": { "desc": "BOTIN PAMPERO CUEROBOX C/P P91 BIDENSIDAD", "proveedores": ["TKW S.A."] }, "I564": { "desc": "BOTIN P61 CUERO FLOR BIDENSIDAD C/PUNTA", "proveedores": ["TKW S.A."] }, "I591": { "desc": "PANT. PAMPERO INDUS. H. JEAN (52-60)", "proveedores": ["MACATA SA"] }, "I624": { "desc": "TRAJE DE LLUVIA SLAPPA", "proveedores": ["RINOTEC SRL"] }, "I739": { "desc": "TRAJE DE LLUVIA PREMIUM BIL-VEX", "proveedores": ["BAC-DALL ARGENTINA SA"] }, "I91BR": { "desc": "BOTIN PAMPERO BIDENS. BR 9001-3001", "proveedores": ["TKW S.A."] }, "IC013": { "desc": "CAMISA DE TRABAJO H.M/L PAMPERO MED.(50-56)", "proveedores": ["MACATA SA"] }, "IC014": { "desc": "CAMISA DE TRABAJO H.M/L PAMPERO GRANDE(58-70)", "proveedores": ["MACATA SA"] }, "IC016": { "desc": "CAMISA DE TRAB H.M/L PAMPERO AZUL M(50-56)", "proveedores": ["MACATA SA"] }, "IC017": { "desc": "CAMISA DE TRAB H.M/L PAMPERO AZUL G(58-70)", "proveedores": ["MACATA SA"] }, "IR123": { "desc": "PONCHO RESERO ECONOMICO", "proveedores": ["SIN MARCA"] }, "N019": { "desc": "BOMBACHA LISA NIÑO PAMPERO", "proveedores": ["MACATA SA"] }, "PA3010": { "desc": "ZAPATILLA 3010 PAMPERO TREKKING", "proveedores": ["DENEB SA"] }, "RI249": { "desc": "BOXER PAMPERO", "proveedores": ["C D Way S.A."] }, "U007": { "desc": "CAMISA ESTANCIERA Hombre. M/L PAMPERO", "proveedores": ["CITEX SRL"] }, "U011": { "desc": "ALPARGATA REFORZADA ADULTO PAMPERO", "proveedores": ["CITEX SRL"] }, "U030": { "desc": "BERMUDA CONDORES PAMPERO", "proveedores": ["CITEX SRL"] }, "U034": { "desc": "PANTALON CARGO RIPSTOP CH (38-54) PAMPERO", "proveedores": ["MACATA SA"] }, "U056": { "desc": "PANT. PAMPERO INDUS. H. JEAN (38-50)", "proveedores": ["MACATA SA"] }, "U063": { "desc": "PANTALON BAHIA POPLIN C/LYCRA PAMPERO", "proveedores": ["RIEMERSO SA"] }, "U070": { "desc": "CHALECO TRELEW H. MATELASEE PAMPERO", "proveedores": ["FOOTWEAR S.R.L"] }, "U084": { "desc": "CINTO COIHUE LISO 40 ENGRASADO PAMPERO", "proveedores": ["Pionera S.A."] }, "U088": { "desc": "CINTO TAPIAL H. 40 CUERO PAMPERO", "proveedores": ["Pionera S.A."] }, "U089": { "desc": "CINTO CAVEN SUELA 40 MM PAMPERO", "proveedores": ["Pionera S.A."] }, "U091": { "desc": "BILLETERA ALERCE H. COMB. LONA PAMPERO", "proveedores": ["Pionera S.A."] }, "U102": { "desc": "BOMBACHA LISA MUJER PAMPERO", "proveedores": ["MACATA SA"] }, "U11122003": { "desc": "CAMISA CAMPO", "proveedores": ["Lopez Omar Alexis"] }, "U11157000": { "desc": "CAMISA RIPSTOP", "proveedores": ["Lopez Omar Alexis"] }, "U122": { "desc": "PANTALON BARRACAS CLASICO M. PAMPERO", "proveedores": ["RIEMERSO SA"] }, "U123": { "desc": "PANT. CANDELARIA M. C/LYCRA PAMPERO", "proveedores": ["RIEMERSO SA"] }, "U145": { "desc": "PANTALON CARGO ELASTIZADO PAMPERO FIT", "proveedores": ["MACATA SA"] }, "U159": { "desc": "CHALECO PEHUEN PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "U176": { "desc": "BOMBACHA OLIVERA H. POPLIN", "proveedores": ["RIEMERSO SA"] }, "U2000": { "desc": "BOTIN TREKKING LANIN", "proveedores": ["INTENSIVO SA"] }, "U2001": { "desc": "BOTIN TREKKIN TRONADOR", "proveedores": ["INTENSIVO SA"] }, "U2003": { "desc": "ZAPATILLA TREKKING OTTO", "proveedores": ["INTENSIVO SA"] }, "U209": { "desc": "PANTALON CARGO RIPSTOP GR (56-60) PAMPERO", "proveedores": ["MACATA SA"] }, "U237": { "desc": "CINTO YATAY BORD. ROMBO 25 PAMPERO", "proveedores": ["Pionera S.A."] }, "U24001D": { "desc": "CAMISA MAIZANI LISO", "proveedores": ["AZUL PATAGONIA"] }, "U325": { "desc": "TERMERA CUERO OLMOS", "proveedores": ["Pionera S.A."] }, "U371": { "desc": "BOTIN RURAL ARRIERO", "proveedores": ["TKW S.A."] }, "U372": { "desc": "BOTIN RURAL RODEO", "proveedores": ["TKW S.A."] }, "U392": { "desc": "CINTO LARREA BORDADO 35MM", "proveedores": ["Pionera S.A."] }, "U396": { "desc": "NECESSAIRE PICABUEY LONA CHICO", "proveedores": ["Pionera S.A."] }, "U411": { "desc": "PANTALON DAMA CARGO DEL NORTE", "proveedores": ["CITEX SRL"] }, "U41160000": { "desc": "AUSTRALIANO CLASICO", "proveedores": ["Mel Sombreros S.R.L."] }, "U41160001": { "desc": "AUSTRALIANO CAZA Y PESCA", "proveedores": ["Mel Sombreros S.R.L."] }, "U41171004": { "desc": "AUSTRALIANO PALMA VERDE", "proveedores": ["Mel Sombreros S.R.L."] }, "U415": { "desc": "ALPARGATA YUTE REFORZADA", "proveedores": ["CITEX SRL"] }, "U433": { "desc": "NECESSAIRE PICABUEY LONA GRANDE", "proveedores": ["PAMPERO"] }, "U454": { "desc": "BOMBACHA ALUMINE M.POPLIN PAMP.", "proveedores": ["RIEMERSO SA"] }, "U596": { "desc": "CAMISA CAIRO FAST DRY", "proveedores": ["MACATA SA"] }, "U601": { "desc": "CHALECO CANVAS", "proveedores": ["MACATA SA"] }, "U616": { "desc": "FAJA TRINCADA 9CM", "proveedores": ["Corbellini Pablo Andres"] }, "U751": { "desc": "CAMPERA SOFTSHELL PAMPERO IND.", "proveedores": ["RANQUEL DEL PLATA SA"] }, "U82106000": { "desc": "MOCHILA EZEIZA", "proveedores": ["Pionera S.A."] }, "U82106001": { "desc": "MOCHILA MAR DEL PLATA", "proveedores": ["Pionera S.A."] }, "I010": { "desc": "BUZO BASICO H.FRIZA PAMPERO", "proveedores": ["GUADAL RM SRL"] }, "I012": { "desc": "CAPA DE LLUVIA BIL VEX", "proveedores": ["BAC-DALL ARGENTINA SA"] }, "I029": { "desc": "PANTALON TRUCKER TERMICO PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I099": { "desc": "BOMBACHA URION H.LIVIANA PAMPERO", "proveedores": ["MACATA SA"] }, "I117": { "desc": "PANTALON CAZ. CARGO II H. PAMPERO AZUL CH (36-54)", "proveedores": ["MACATA SA"] }, "I118": { "desc": "PANTALON CAZ. CARGO II H. PAMPER AZUL GD (56-70)", "proveedores": ["MACATA SA"] }, "I218": { "desc": "PANTALON CARGO DAMA PAMPERO", "proveedores": ["MACATA SA"] }, "I351": { "desc": "BOMBACHA LISA H. PAMPERO AZUL (38-54)", "proveedores": ["MACATA SA"] }, "I382": { "desc": "JEAN DAMA IND. ELASTIZADO PAMPERO", "proveedores": ["MACATA SA"] }, "I503": { "desc": "CHALECO MINERO REFLECTIVO PAMPERO", "proveedores": ["MACATA SA"] }, "I508": { "desc": "BERMUDA RIPSTOP PAMPERO CH. (38-54)", "proveedores": ["MACATA SA"] }, "I585": { "desc": "CAMISA DE TRAB. H M/L JEAN PAMPERO (50-60)", "proveedores": ["MACATA SA"] }, "I606": { "desc": "BOTIN P401 BOX C/PUNTA PU AMARILLA", "proveedores": ["DENEB SA"] }, "U036": { "desc": "CAMISA OXFORD H. M/L PLUSNORTE", "proveedores": ["Pampenorte S.R.L."] }, "U100": { "desc": "CAMISA ESTANCIERA Mujer M/L PAMPERO", "proveedores": ["CITEX SRL"] }, "U150": { "desc": "TERMO IGUAZU 1.1 LIT. PAMPERO", "proveedores": ["ARTICULOS PROMOCIONALES SA"] }, "HC211024": { "desc": "CHALECO TRIP", "proveedores": ["MACATA SA"] }, "121134004": { "desc": "BOTIN HUEPIL 2701 PAMPERO CUERO FLOR C/P BIDENSIDAD", "proveedores": ["DENEB SA"] }, "I052": { "desc": "ZAPATO CONSTRUCTOR C/P PU PAMPERO", "proveedores": ["PAMPERO"] }, "I108": { "desc": "GUANTE REFORCER C/KEVLAR", "proveedores": ["PAMPERO"] }, "I560": { "desc": "BOTIN BAQUEANO S/P PAMPERO", "proveedores": ["RANQUEL DEL PLATA SA"] }, "I038": { "desc": "PANTALON DE TRAB. H. PAMPERO AZUL CH(36-60)", "proveedores": ["MACATA SA"] } };
+
+  const CATALOG_UPPER = Object.fromEntries(Object.entries(CATALOG).map(([k, v]) => [k.toUpperCase(), v]));
+
+  // ═══════════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════════
+  let priceData = { byCodigo: {}, byDesc: {} };
+  let priceData2 = { byCodigo: {}, byDesc: {} };
+  let priceData3 = { byCodigo: {}, byDesc: {} };
+  let listaActual = 1;
+  let pqSearch = '';
+  let items = []; // { codigo, desc, cantidad, precio, manual }
+
+  // ═══════════════════════════════════════════════════════════
+  // UTILS (mismo patrón que Stock Real.html)
+  // ═══════════════════════════════════════════════════════════
+  function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+  function getCatalog(codigo) {
+    if (!codigo) return null;
+    return CATALOG_UPPER[codigo.toUpperCase()] || null;
+  }
+
+  function parseStockNumber(v) {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    const s = String(v).trim();
+    if (!s) return 0;
+    const cleaned = s.includes(',')
+      ? s.replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '')
+      : s.replace(/[^0-9.\-]/g, '');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function cleanStockText(v) {
+    return String(v ?? '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  function formatPrice(n) {
+    return (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+  }
+
+  function getPrice(codigo, desc) {
+    if (codigo) { const p = priceData.byCodigo[codigo.toUpperCase()]; if (p !== undefined) return p; }
+    if (desc) { const p = priceData.byDesc[norm(desc)]; if (p !== undefined) return p; }
+    return null;
+  }
+  function getPrice2(codigo, desc) {
+    if (codigo) { const p = priceData2.byCodigo[codigo.toUpperCase()]; if (p !== undefined) return p; }
+    if (desc) { const p = priceData2.byDesc[norm(desc)]; if (p !== undefined) return p; }
+    return null;
+  }
+  function getPrice3(codigo, desc) {
+    if (codigo) { const p = priceData3.byCodigo[codigo.toUpperCase()]; if (p !== undefined) return p; }
+    if (desc) { const p = priceData3.byDesc[norm(desc)]; if (p !== undefined) return p; }
+    return null;
+  }
+
+  // Precio unitario del presupuesto = siempre SIN IVA.
+  // Lista 1 ya figura sin IVA en la hoja. Lista 2 y 3 vienen con IVA incluido:
+  // se discrimina dividiendo por 1,21 y redondeando al entero mayor más cercano.
+  function computePrecioUnitario(lista, codigo, desc) {
+    let raw;
+    if (lista === 1) raw = getPrice(codigo, desc);
+    else if (lista === 2) raw = getPrice2(codigo, desc);
+    else raw = getPrice3(codigo, desc);
+    if (raw == null) return null;
+    return lista === 1 ? Math.round(raw) : Math.ceil(raw / 1.21);
+  }
+
+  function gvizJsonp(url, timeoutMs = 20000) {
+    return new Promise((resolve, reject) => {
+      const cb = '__gviz_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const sep = url.includes('?') ? '&' : '?';
+      const finalUrl = `${url}${sep}tqx=out:json;responseHandler:${cb}&_=${Date.now()}`;
+      const script = document.createElement('script');
+      const cleanup = () => { try { delete window[cb]; } catch(e) { window[cb] = undefined; } script.remove(); };
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Timeout al cargar Sheets.')); }, timeoutMs);
+      window[cb] = data => { clearTimeout(timer); cleanup(); resolve(data); };
+      script.onerror = () => { clearTimeout(timer); cleanup(); reject(new Error('Error al cargar script de Sheets.')); };
+      script.src = finalUrl;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function loadPriceSheet(sheetId, gid, onProgress) {
+    const PAGE = 15000;
+    const byCodigo = {}, byDesc = {};
+    for (let startRow = 1; startRow <= 200000; startRow += PAGE) {
+      const endRow = startRow + PAGE - 1;
+      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&range=A${startRow}:F${endRow}&headers=0`;
+      let data;
+      try {
+        data = await gvizJsonp(url, 20000);
+      } catch (e) {
+        break;
+      }
+      const rows = (data.table && data.table.rows) ? data.table.rows : [];
+      rows.forEach(row => {
+        const c = row.c || [];
+        const cell = i => (c[i] && c[i].v !== undefined) ? c[i].v : '';
+        const codigo = cleanStockText(cell(0));
+        const desc = cleanStockText(cell(1));
+        if (norm(codigo).includes('articulo') || norm(desc) === 'articulo descripcion') return;
+        if (!codigo && !desc) return;
+        const precio = parseStockNumber(cell(5));
+        if (!precio) return;
+        if (codigo) byCodigo[codigo.toUpperCase()] = precio;
+        if (desc) byDesc[norm(desc)] = precio;
+      });
+      if (onProgress) onProgress({ byCodigo, byDesc });
+      if (rows.length < PAGE) break;
+    }
+    return { byCodigo, byDesc };
+  }
+
+  async function loadAllPrices() {
+    const status = document.getElementById('pqLoadStatus');
+    try {
+      await Promise.all([
+        loadPriceSheet(PRICE_SHEETS_ID, PRICE_SHEETS_GID, d => { priceData = d; refreshAutoPrices(); }).then(d => priceData = d),
+        loadPriceSheet(PRICE2_SHEETS_ID, PRICE2_SHEETS_GID, d => { priceData2 = d; refreshAutoPrices(); }).then(d => priceData2 = d),
+        loadPriceSheet(PRICE3_SHEETS_ID, PRICE3_SHEETS_GID, d => { priceData3 = d; refreshAutoPrices(); }).then(d => priceData3 = d),
+      ]);
+      status.textContent = `✓ Precios actualizados`;
+    } catch (e) {
+      status.textContent = 'Error al cargar precios';
+    }
+    refreshAutoPrices();
+    renderDropdown();
+  }
+
+  // Recalcula el precio de los items que NO fueron editados manualmente
+  // (se usa cuando terminan de cargar los precios en segundo plano)
+  function refreshAutoPrices() {
+    let changed = false;
+    items.forEach(it => {
+      if (it.manual) return;
+      const p = computePrecioUnitario(listaActual, it.codigo, it.desc);
+      if (p != null && p !== it.precio) { it.precio = p; changed = true; }
+    });
+    if (changed) renderItems();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // LISTA DE PRECIOS
+  // ═══════════════════════════════════════════════════════════
+  function renderListaSelector() {
+    const el = document.getElementById('listaSelector');
+    const opts = [
+      { n: 1, label: 'Lista 1', cls: '' },
+      { n: 2, label: 'Lista 2 · Mayorista', cls: 'l2' },
+      { n: 3, label: 'Lista 3 · Distribuidora', cls: 'l3' },
+    ];
+    el.innerHTML = opts.map(o =>
+      `<button type="button" class="lista-btn ${o.cls} ${listaActual === o.n ? 'active' : ''}" onclick="selectLista(${o.n})">${o.label}</button>`
+    ).join('');
+  }
+
+  function selectLista(n) {
+    listaActual = n;
+    items.forEach(it => {
+      if (it.manual) return;
+      const p = computePrecioUnitario(listaActual, it.codigo, it.desc);
+      it.precio = p != null ? p : 0;
+    });
+    renderListaSelector();
+    renderItems();
+    renderDropdown();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // BUSCADOR DE ARTÍCULOS
+  // ═══════════════════════════════════════════════════════════
+  function positionarDropdown() {
+    const input = document.getElementById('pqSearchInput');
+    const dd = document.getElementById('pqDropdown');
+    const r = input.getBoundingClientRect();
+    const espacioAbajo = window.innerHeight - r.bottom - 8;
+    dd.style.left = r.left + 'px';
+    dd.style.width = r.width + 'px';
+    // Si no hay suficiente espacio debajo (ej: teclado del celular tapando), se abre hacia arriba
+    if (espacioAbajo < 150 && r.top > espacioAbajo) {
+      const maxH = Math.min(320, r.top - 8);
+      dd.style.maxHeight = maxH + 'px';
+      dd.style.top = '';
+      dd.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+    } else {
+      dd.style.maxHeight = Math.min(320, espacioAbajo) + 'px';
+      dd.style.bottom = '';
+      dd.style.top = (r.bottom + 4) + 'px';
+    }
+  }
+
+  function renderDropdown() {
+    const dd = document.getElementById('pqDropdown');
+    const t = norm(pqSearch);
+    if (!t) { dd.style.display = 'none'; return; }
+    const codes = Object.keys(CATALOG_UPPER).filter(c =>
+      norm(c).includes(t) || norm(CATALOG_UPPER[c].desc).includes(t)
+    ).slice(0, 20);
+    if (!codes.length) {
+      dd.innerHTML = `<div class="pq-dd-empty">Sin resultados para "${pqSearch}"</div>`;
+      dd.style.display = 'block';
+      positionarDropdown();
+      return;
+    }
+    dd.innerHTML = codes.map(c => {
+      const desc = CATALOG_UPPER[c].desc;
+      const p = computePrecioUnitario(listaActual, c, desc);
+      const esc = c.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<div class="pq-dd-item" onmousedown="addArticulo('${esc}')">
+        <span class="pq-dd-code">${c}</span>
+        <span class="pq-dd-desc">${desc}</span>
+        ${p != null ? `<span class="precio-tag-sm" style="margin-left:auto">${formatPrice(p)}</span>` : `<span class="pq-dd-noprice">sin precio</span>`}
+      </div>`;
+    }).join('');
+    dd.style.display = 'block';
+    positionarDropdown();
+  }
+
+  window.addEventListener('scroll', () => {
+    const dd = document.getElementById('pqDropdown');
+    if (dd && dd.style.display === 'block') positionarDropdown();
+  }, true);
+  window.addEventListener('resize', () => {
+    const dd = document.getElementById('pqDropdown');
+    if (dd && dd.style.display === 'block') positionarDropdown();
+  });
+
+  function addArticulo(codigo) {
+    const cat = getCatalog(codigo);
+    if (!cat) return;
+    const existing = items.find(it => it.codigo === codigo && it.tipo !== 'personalizacion');
+    if (existing) {
+      existing.cantidad += 1;
+    } else {
+      const p = computePrecioUnitario(listaActual, codigo, cat.desc);
+      items.push({ tipo: 'articulo', codigo, desc: cat.desc, cantidad: 1, precio: p != null ? p : 0, manual: false });
+    }
+    pqSearch = '';
+    document.getElementById('pqSearchInput').value = '';
+    document.getElementById('pqDropdown').style.display = 'none';
+    renderItems();
+  }
+
+  function addPersonalizacion() {
+    const input = document.getElementById('pqPersoInput');
+    const desc = input.value.trim();
+    if (!desc) { alert('Describí la personalización antes de agregarla (ej: bordado de logo).'); return; }
+    items.push({ tipo: 'personalizacion', codigo: null, desc, cantidad: 1, precio: 0, manual: true });
+    input.value = '';
+    renderItems();
+  }
+
+  function updateDescPersonalizacion(i, v) {
+    items[i].desc = v;
+  }
+
+  function escAttr(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // TABLA DE ITEMS
+  // ═══════════════════════════════════════════════════════════
+  function updateCantidad(i, v) {
+    items[i].cantidad = Math.max(0, parseFloat(v) || 0);
+    renderItems();
+  }
+  function updatePrecio(i, v) {
+    items[i].precio = Math.max(0, parseFloat(v) || 0);
+    items[i].manual = true;
+    renderItems();
+  }
+  function resetPrecio(i) {
+    const it = items[i];
+    const p = computePrecioUnitario(listaActual, it.codigo, it.desc);
+    it.precio = p != null ? p : 0;
+    it.manual = false;
+    renderItems();
+  }
+  function removeItem(i) {
+    items.splice(i, 1);
+    renderItems();
+  }
+
+  function renderItems() {
+    const empty = document.getElementById('itemsEmpty');
+    const wrap = document.getElementById('itemsTableWrap');
+
+    // Guarda qué input tenía el foco (y la posición del cursor) para restaurarlo
+    // después de reconstruir la tabla — evita que se "deseleccione" al tipear.
+    let focusInfo = null;
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.tagName === 'INPUT') {
+      const tr = activeEl.closest('#itemsBody tr');
+      if (tr) {
+        const td = activeEl.closest('td');
+        focusInfo = {
+          rowIndex: Array.prototype.indexOf.call(tr.parentNode.children, tr),
+          cellIndex: Array.prototype.indexOf.call(tr.children, td),
+          selStart: activeEl.selectionStart,
+          selEnd: activeEl.selectionEnd
+        };
+      }
+    }
+
+    if (items.length === 0) {
+      empty.style.display = 'block';
+      wrap.style.display = 'none';
+    } else {
+      empty.style.display = 'none';
+      wrap.style.display = 'block';
+      document.getElementById('itemsBody').innerHTML = items.map((it, i) => {
+        const total = it.cantidad * it.precio;
+        const esPerso = it.tipo === 'personalizacion';
+        const colArticulo = esPerso
+          ? `<span class="pq-perso-badge">Personalización</span><input type="text" value="${escAttr(it.desc)}" class="pq-perso-input" placeholder="Describí la personalización (ej: bordado de logo)" oninput="updateDescPersonalizacion(${i}, this.value)">`
+          : `<span class="mono-val">${it.codigo}</span><div class="pq-item-desc">${it.desc}</div>`;
+        return `<tr>
+          <td>${colArticulo}</td>
+          <td><input type="number" min="0" step="1" value="${it.cantidad}" class="pq-num-input" oninput="updateCantidad(${i}, this.value)"></td>
+          <td>
+            <div class="pq-price-cell">
+              <input type="number" min="0" step="1" value="${it.precio}" class="pq-num-input ${(!esPerso && it.manual) ? 'pq-manual' : ''} ${it.precio === 0 ? 'pq-sin-precio' : ''}" oninput="updatePrecio(${i}, this.value)">
+              ${(!esPerso && it.manual) ? `<button class="pq-reset-btn" title="Volver al precio de lista" onclick="resetPrecio(${i})">↺</button>` : ''}
+            </div>
+          </td>
+          <td class="pq-total-cell">${formatPrice(total)}</td>
+          <td><button class="pq-remove-btn" title="Quitar" onclick="removeItem(${i})">✕</button></td>
+        </tr>`;
+      }).join('');
+
+      if (focusInfo) {
+        const rows = document.querySelectorAll('#itemsBody tr');
+        const tr = rows[focusInfo.rowIndex];
+        const td = tr && tr.children[focusInfo.cellIndex];
+        const input = td && td.querySelector('input');
+        if (input) {
+          input.focus();
+          try { input.setSelectionRange(focusInfo.selStart, focusInfo.selEnd); } catch (e) {}
+        }
+      }
+    }
+    renderTotales();
+  }
+
+  function calcularTotales() {
+    const subtotal = items.reduce((s, it) => s + it.cantidad * it.precio, 0);
+    const iva = subtotal * 0.21;
+    const total = subtotal + iva;
+    return { subtotal, iva, total };
+  }
+
+  function renderTotales() {
+    const { subtotal, iva, total } = calcularTotales();
+    document.getElementById('totSubtotal').textContent = formatPrice(subtotal);
+    document.getElementById('totIva').textContent = formatPrice(iva);
+    document.getElementById('totTotal').textContent = formatPrice(total);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // RESET
+  // ═══════════════════════════════════════════════════════════
+  function nuevoPresupuesto() {
+    if (items.length > 0 && !confirm('¿Vaciar el presupuesto actual?')) return;
+    items = [];
+    document.getElementById('pqCliente').value = '';
+    document.getElementById('pqVendedor').value = '';
+    document.getElementById('pqFecha').value = new Date().toISOString().slice(0, 10);
+    listaActual = 1;
+    renderListaSelector();
+    renderItems();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GENERAR PDF
+  // ═══════════════════════════════════════════════════════════
+  function construirDocumentoPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const marginX = 14;
+      let y = 16;
+
+      // Logo simple (círculo amarillo + "P" negra, acorde al isologo Pampero)
+      doc.setFillColor(240, 196, 25);
+      doc.circle(marginX + 7, y + 6.5, 7, 'F');
+      doc.setTextColor(26, 26, 26);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.text('P', marginX + 7, y + 9.8, { align: 'center' });
+
+      doc.setTextColor(26, 26, 26);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('PAMPENORTE SRL', marginX + 18, y + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text('Av. Rafael Núñez 4535 - Cerro Las Rosas, Córdoba, Argentina', marginX + 18, y + 9.5);
+      doc.text('CUIT: 30-71254684-7  ·  IIBB: 30-71254684-7', marginX + 18, y + 13.5);
+
+      doc.setTextColor(26, 26, 26);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('PRESUPUESTO', pageWidth - marginX, y + 5, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const fechaInput = document.getElementById('pqFecha').value;
+      const fechaStr = fechaInput
+        ? new Date(fechaInput + 'T00:00:00').toLocaleDateString('es-AR')
+        : new Date().toLocaleDateString('es-AR');
+      doc.text(`Fecha: ${fechaStr}`, pageWidth - marginX, y + 11, { align: 'right' });
+
+      y += 22;
+      doc.setDrawColor(226, 223, 217);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 6;
+
+      const cliente = document.getElementById('pqCliente').value.trim();
+      const vendedor = document.getElementById('pqVendedor').value.trim();
+      doc.setFontSize(9.5);
+      if (cliente) {
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(26,26,26); doc.text('Cliente:', marginX, y);
+        doc.setFont('helvetica', 'normal'); doc.text(cliente, marginX + 16, y);
+        y += 5;
+      }
+      if (vendedor) {
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(26,26,26); doc.text('Vendedor:', marginX, y);
+        doc.setFont('helvetica', 'normal'); doc.text(vendedor, marginX + 18, y);
+        y += 5;
+      }
+      if (cliente || vendedor) y += 2;
+
+      const body = items.map(it => [
+        it.codigo || 'Personalización',
+        it.desc,
+        String(it.cantidad),
+        formatPrice(it.precio),
+        formatPrice(it.cantidad * it.precio)
+      ]);
+
+      doc.autoTable({
+        startY: y,
+        head: [['Código', 'Artículo', 'Cant.', 'Precio Unit.', 'Total']],
+        body,
+        styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.2 },
+        headStyles: { fillColor: [26, 26, 26], textColor: [240, 196, 25], fontStyle: 'bold' },
+        columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+        margin: { left: marginX, right: marginX }
+      });
+
+      let finalY = doc.lastAutoTable.finalY + 8;
+      const { subtotal, iva, total } = calcularTotales();
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(107, 114, 128);
+      doc.text('Total sin IVA:', pageWidth - marginX - 50, finalY);
+      doc.text(formatPrice(subtotal), pageWidth - marginX, finalY, { align: 'right' });
+      finalY += 5.5;
+      doc.text('IVA (21%):', pageWidth - marginX - 50, finalY);
+      doc.text(formatPrice(iva), pageWidth - marginX, finalY, { align: 'right' });
+      finalY += 7;
+      doc.setDrawColor(240, 196, 25);
+      doc.setLineWidth(0.8);
+      doc.line(pageWidth - marginX - 60, finalY - 4.5, pageWidth - marginX, finalY - 4.5);
+      doc.setLineWidth(0.2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(26, 26, 26);
+      doc.text('TOTAL:', pageWidth - marginX - 50, finalY);
+      doc.text(formatPrice(total), pageWidth - marginX, finalY, { align: 'right' });
+
+      finalY += 12;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(150, 150, 150);
+      doc.text('Presupuesto sin validez como factura. Precios sujetos a modificación sin previo aviso.', marginX, finalY);
+
+      const nombreBase = cliente ? cliente.replace(/[^a-zA-Z0-9]+/g, '_') : fechaStr.replace(/\//g, '-');
+      const nombreArchivo = `Presupuesto_${nombreBase}.pdf`;
+      const blob = doc.output('blob');
+      const file = new File([blob], nombreArchivo, { type: 'application/pdf' });
+
+      return { doc, file, nombreArchivo, cliente, fechaStr };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // COMPARTIR POR WHATSAPP (mobile) / DESCARGAR (pc)
+  // ═══════════════════════════════════════════════════════════
+  async function compartirWhatsApp() {
+    if (items.length === 0) {
+      alert('Agregá al menos un artículo antes de generar el presupuesto.');
+      return;
+    }
+    const btn = document.getElementById('btnCompartir');
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    btn.textContent = 'Generando…';
+
+    try {
+      const { doc, file, nombreArchivo, cliente, fechaStr } = construirDocumentoPDF();
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Presupuesto Pampero',
+            text: `Presupuesto Pampero${cliente ? ' - ' + cliente : ''} (${fechaStr})`
+          });
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+      // Sin soporte para compartir archivos (ej: PC de escritorio): se descarga y se avisa
+      doc.save(nombreArchivo);
+      alert('Tu navegador no permite compartir el PDF directamente. Se descargó el archivo: adjuntalo manualmente en WhatsApp.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
+
+  function descargarPDF() {
+    if (items.length === 0) {
+      alert('Agregá al menos un artículo antes de generar el presupuesto.');
+      return;
+    }
+    const btn = document.getElementById('btnDescargar');
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    btn.textContent = 'Generando…';
+    try {
+      const { doc, nombreArchivo } = construirDocumentoPDF();
+      doc.save(nombreArchivo);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════════════════
+  document.getElementById('pqFecha').value = new Date().toISOString().slice(0, 10);
+  renderListaSelector();
+  renderItems();
+  loadAllPrices();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+
+</body>
+</html>
